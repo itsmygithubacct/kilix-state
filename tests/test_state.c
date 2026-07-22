@@ -92,9 +92,12 @@ static bool test_crc_record_and_atomic_replace(const char *root)
     CHECK(kilixstate_load(&store, loaded, sizeof loaded, &loaded_size) ==
           KILIXSTATE_OK);
     CHECK(memcmp(loaded, state, sizeof state) == 0);
+    CHECK(kilixstate_remove(&store) == KILIXSTATE_OK);
+    CHECK(kilixstate_load(&store, loaded, sizeof loaded, &loaded_size) ==
+          KILIXSTATE_NOT_FOUND);
+    CHECK(kilixstate_remove(&store) == KILIXSTATE_NOT_FOUND);
     kilixstate_store_close(&store);
     kilixstate_store_close(&store);
-    CHECK(unlink(path) == 0);
     CHECK(rmdir(store.directory_path) == 0);
     return true;
 }

@@ -72,6 +72,8 @@ migrations. New state should use the default CRC32 format.
 - `max_payload` is mandatory and capped at 16 MiB.
 - A too-small load buffer reports the required size without a partial load.
 - Store initialization and close are explicit; close is idempotent.
+- Removal uses the same stable directory descriptor and persists the directory
+  update before reporting success.
 - Saving, replacing, or closing a store must not race another operation on
   that store.
 - Structured payloads should contain their own schema version and avoid raw

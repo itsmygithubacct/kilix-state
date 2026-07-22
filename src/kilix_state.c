@@ -395,6 +395,18 @@ kilixstate_result kilixstate_save(kilixstate_store *store,
     return KILIXSTATE_OK;
 }
 
+kilixstate_result kilixstate_remove(kilixstate_store *store)
+{
+    if (store == NULL || !store->initialized || store->directory_fd < 0)
+        return KILIXSTATE_NOT_INITIALIZED;
+    if (unlinkat(store->directory_fd, store->filename, 0) != 0) {
+        if (errno == ENOENT) return KILIXSTATE_NOT_FOUND;
+        return result_from_errno(errno);
+    }
+    if (fsync(store->directory_fd) != 0) return result_from_errno(errno);
+    return KILIXSTATE_OK;
+}
+
 kilixstate_result kilixstate_load(kilixstate_store *store, void *payload,
                                   size_t payload_capacity,
                                   size_t *payload_size)

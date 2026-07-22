@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define KILIXSTATE_VERSION_MAJOR 0
-#define KILIXSTATE_VERSION_MINOR 3
+#define KILIXSTATE_VERSION_MINOR 4
 #define KILIXSTATE_VERSION_PATCH 0
 
 #define KILIXSTATE_DEFAULT_MAX_PAYLOAD (64u * 1024u)
@@ -72,6 +72,9 @@ void kilixstate_store_close(kilixstate_store *store);
 /* Writes mode 0600 through a same-directory temporary, fsync, and rename. */
 kilixstate_result kilixstate_save(kilixstate_store *store,
                                   const void *payload, size_t payload_size);
+
+/* Remove the state entry through the stable directory fd and fsync the dir. */
+kilixstate_result kilixstate_remove(kilixstate_store *store);
 
 /*
  * Loads a regular no-follow file. On BUFFER_TOO_SMALL, *payload_size is the
