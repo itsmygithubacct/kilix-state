@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define KILIXSTATE_VERSION_MAJOR 0
-#define KILIXSTATE_VERSION_MINOR 1
+#define KILIXSTATE_VERSION_MINOR 2
 #define KILIXSTATE_VERSION_PATCH 0
 
 #define KILIXSTATE_DEFAULT_MAX_PAYLOAD (64u * 1024u)
@@ -40,6 +40,8 @@ typedef enum kilixstate_result {
 typedef struct kilixstate_options {
     const char *app_id;
     const char *filename;
+    /* Optional absolute root in place of XDG_DATA_HOME/HOME resolution. */
+    const char *base_directory;
     size_t max_payload;
     kilixstate_format format;
 } kilixstate_options;
@@ -57,8 +59,9 @@ typedef struct kilixstate_store {
 void kilixstate_options_init(kilixstate_options *options);
 
 /*
- * Resolve and create $XDG_DATA_HOME/app_id (or ~/.local/share/app_id), open
- * it without following symlinks, and normalize the app directory to 0700.
+ * Resolve and create base_directory/app_id when explicitly configured, or
+ * $XDG_DATA_HOME/app_id (falling back to ~/.local/share/app_id). Open every
+ * component without following symlinks and normalize the app directory 0700.
  */
 kilixstate_result kilixstate_store_init(kilixstate_store *store,
                                         const kilixstate_options *options);

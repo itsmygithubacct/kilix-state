@@ -110,6 +110,7 @@ void kilixstate_options_init(kilixstate_options *options)
     if (options == NULL) return;
     options->app_id = NULL;
     options->filename = NULL;
+    options->base_directory = NULL;
     options->max_payload = KILIXSTATE_DEFAULT_MAX_PAYLOAD;
     options->format = KILIXSTATE_FORMAT_CRC32;
 }
@@ -136,8 +137,14 @@ kilixstate_result kilixstate_store_init(kilixstate_store *store,
         (options->format != KILIXSTATE_FORMAT_CRC32 &&
          options->format != KILIXSTATE_FORMAT_RAW)) return KILIXSTATE_INVALID;
 
-    xdg_data_home = getenv("XDG_DATA_HOME");
-    if (xdg_data_home != NULL && xdg_data_home[0] != '\0') {
+    if (options->base_directory != NULL &&
+        options->base_directory[0] != '\0') {
+        if (options->base_directory[0] != '/')
+            return KILIXSTATE_INVALID;
+        length = snprintf(base, sizeof base, "%s",
+                          options->base_directory);
+    } else if ((xdg_data_home = getenv("XDG_DATA_HOME")) != NULL &&
+               xdg_data_home[0] != '\0') {
         if (xdg_data_home[0] != '/') return KILIXSTATE_INVALID;
         length = snprintf(base, sizeof base, "%s", xdg_data_home);
     } else {

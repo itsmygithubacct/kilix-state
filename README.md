@@ -50,6 +50,11 @@ absolute path, otherwise below `$HOME/.local/share/<app_id>`. Every path
 component is opened without following symlinks; the app directory is private
 mode 0700. App IDs and filenames are single conservative path components.
 
+Tests, portable bundles, and embedding hosts can set
+`options.base_directory` to an absolute root. The app ID is still appended,
+and the override uses the same component-by-component no-symlink traversal;
+relative overrides are rejected.
+
 For an existing byte-for-byte file format, select `KILIXSTATE_FORMAT_RAW`.
 Raw storage retains the secure and atomic filesystem behavior but omits the
 record header and checksum, which makes it useful for compatibility

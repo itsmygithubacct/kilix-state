@@ -201,6 +201,38 @@ static bool test_validation(void)
     return true;
 }
 
+static bool test_explicit_base_directory(const char *root)
+{
+    static const char state[] = "isolated state";
+    kilixstate_options options;
+    kilixstate_store store;
+    char loaded[32] = "";
+    char path[KILIXSTATE_PATH_CAPACITY];
+    size_t loaded_size = 0u;
+
+    CHECK(setenv("XDG_DATA_HOME", "relative/ignored", 1) == 0);
+    kilixstate_options_init(&options);
+    options.app_id = "override-game";
+    options.filename = "profile.dat";
+    options.base_directory = root;
+    options.format = KILIXSTATE_FORMAT_RAW;
+    CHECK(kilixstate_store_init(&store, &options) == KILIXSTATE_OK);
+    CHECK(kilixstate_save(&store, state, sizeof state) == KILIXSTATE_OK);
+    CHECK(kilixstate_load(&store, loaded, sizeof loaded, &loaded_size) ==
+          KILIXSTATE_OK);
+    CHECK(loaded_size == sizeof state);
+    CHECK(memcmp(loaded, state, sizeof state) == 0);
+    CHECK(kilixstate_store_path(&store, path, sizeof path) == KILIXSTATE_OK);
+    CHECK(strncmp(path, root, strlen(root)) == 0);
+    kilixstate_store_close(&store);
+    CHECK(unlink(path) == 0);
+    CHECK(rmdir(store.directory_path) == 0);
+
+    options.base_directory = "relative";
+    CHECK(kilixstate_store_init(&store, &options) == KILIXSTATE_INVALID);
+    return true;
+}
+
 int main(void)
 {
     char root_template[] = "/tmp/kilix-state-test-XXXXXX";
@@ -212,6 +244,7 @@ int main(void)
     CHECK(test_raw_compatibility());
     CHECK(test_symlink_defenses(root));
     CHECK(test_validation());
+    CHECK(test_explicit_base_directory(root));
     CHECK(rmdir(root) == 0);
     CHECK(setenv("XDG_DATA_HOME", "relative/path", 1) == 0);
     {
