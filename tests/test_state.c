@@ -233,27 +233,56 @@ static bool test_explicit_base_directory(const char *root)
     return true;
 }
 
+static bool test_absolute_path_compatibility(const char *root)
+{
+    static const unsigned char state[] = {9u, 8u, 7u};
+    kilixstate_options options;
+    kilixstate_store store;
+    unsigned char loaded[8] = {0};
+    char path[KILIXSTATE_PATH_CAPACITY];
+    size_t loaded_size = 0u;
+
+    CHECK(snprintf(path, sizeof path, "%s/.legacy-save", root) > 0);
+    kilixstate_options_init(&options);
+    options.absolute_path = path;
+    options.max_payload = sizeof loaded;
+    options.format = KILIXSTATE_FORMAT_RAW;
+    CHECK(kilixstate_store_init(&store, &options) == KILIXSTATE_OK);
+    CHECK(strcmp(store.directory_path, root) == 0);
+    CHECK(strcmp(store.filename, ".legacy-save") == 0);
+    CHECK(kilixstate_save(&store, state, sizeof state) == KILIXSTATE_OK);
+    CHECK(kilixstate_load(&store, loaded, sizeof loaded, &loaded_size) ==
+          KILIXSTATE_OK);
+    CHECK(loaded_size == sizeof state);
+    CHECK(memcmp(loaded, state, sizeof state) == 0);
+    kilixstate_store_close(&store);
+    CHECK(unlink(path) == 0);
+
+    options.absolute_path = "relative/save";
+    CHECK(kilixstate_store_init(&store, &options) == KILIXSTATE_INVALID);
+    return true;
+}
+
 int main(void)
 {
     char root_template[] = "/tmp/kilix-state-test-XXXXXX";
     char *root = mkdtemp(root_template);
 
-    CHECK(root != NULL);
-    CHECK(setenv("XDG_DATA_HOME", root, 1) == 0);
-    CHECK(test_crc_record_and_atomic_replace(root));
-    CHECK(test_raw_compatibility());
-    CHECK(test_symlink_defenses(root));
-    CHECK(test_validation());
-    CHECK(test_explicit_base_directory(root));
-    CHECK(rmdir(root) == 0);
-    CHECK(setenv("XDG_DATA_HOME", "relative/path", 1) == 0);
+    if (root == NULL || setenv("XDG_DATA_HOME", root, 1) != 0 ||
+        !test_crc_record_and_atomic_replace(root) ||
+        !test_raw_compatibility() || !test_symlink_defenses(root) ||
+        !test_validation() || !test_explicit_base_directory(root) ||
+        !test_absolute_path_compatibility(root) || rmdir(root) != 0 ||
+        setenv("XDG_DATA_HOME", "relative/path", 1) != 0)
+        return EXIT_FAILURE;
     {
         kilixstate_options options;
         kilixstate_store store;
         kilixstate_options_init(&options);
         options.app_id = "game";
         options.filename = "state";
-        CHECK(kilixstate_store_init(&store, &options) == KILIXSTATE_INVALID);
+        if (kilixstate_store_init(&store, &options) != KILIXSTATE_INVALID)
+            return EXIT_FAILURE;
     }
     (void)puts("ok: kilix-state");
     return 0;

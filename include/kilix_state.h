@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define KILIXSTATE_VERSION_MAJOR 0
-#define KILIXSTATE_VERSION_MINOR 2
+#define KILIXSTATE_VERSION_MINOR 3
 #define KILIXSTATE_VERSION_PATCH 0
 
 #define KILIXSTATE_DEFAULT_MAX_PAYLOAD (64u * 1024u)
@@ -42,6 +42,8 @@ typedef struct kilixstate_options {
     const char *filename;
     /* Optional absolute root in place of XDG_DATA_HOME/HOME resolution. */
     const char *base_directory;
+    /* Optional absolute legacy/host path; overrides the fields above. */
+    const char *absolute_path;
     size_t max_payload;
     kilixstate_format format;
 } kilixstate_options;

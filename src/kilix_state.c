@@ -40,6 +40,31 @@ static bool valid_component(const char *component, size_t capacity)
     return true;
 }
 
+static bool valid_filename(const char *filename)
+{
+    size_t length;
+
+    if (filename == NULL || filename[0] == '\0') return false;
+    length = strlen(filename);
+    if (length >= KILIXSTATE_FILENAME_CAPACITY || length > NAME_MAX ||
+        (length == 1u && filename[0] == '.') ||
+        (length == 2u && filename[0] == '.' && filename[1] == '.'))
+        return false;
+    if (filename[0] != '.' &&
+        !valid_component(filename, KILIXSTATE_FILENAME_CAPACITY))
+        return false;
+    for (size_t index = filename[0] == '.' ? 1u : length;
+         index < length; ++index) {
+        const unsigned char byte = (unsigned char)filename[index];
+        if ((byte < (unsigned char)'A' || byte > (unsigned char)'Z') &&
+            (byte < (unsigned char)'a' || byte > (unsigned char)'z') &&
+            (byte < (unsigned char)'0' || byte > (unsigned char)'9') &&
+            byte != (unsigned char)'-' && byte != (unsigned char)'_' &&
+            byte != (unsigned char)'.') return false;
+    }
+    return true;
+}
+
 static int open_directory_path(const char *path)
 {
     char component[NAME_MAX + 1u];
@@ -111,6 +136,7 @@ void kilixstate_options_init(kilixstate_options *options)
     options->app_id = NULL;
     options->filename = NULL;
     options->base_directory = NULL;
+    options->absolute_path = NULL;
     options->max_payload = KILIXSTATE_DEFAULT_MAX_PAYLOAD;
     options->format = KILIXSTATE_FORMAT_CRC32;
 }
@@ -122,6 +148,8 @@ kilixstate_result kilixstate_store_init(kilixstate_store *store,
     const char *home;
     char base[KILIXSTATE_PATH_CAPACITY];
     char directory[KILIXSTATE_PATH_CAPACITY];
+    const char *filename;
+    bool explicit_path;
     struct stat status;
     int length;
     int directory_fd;
@@ -130,36 +158,59 @@ kilixstate_result kilixstate_store_init(kilixstate_store *store,
     (void)memset(store, 0, sizeof *store);
     store->directory_fd = -1;
     if (options == NULL ||
-        !valid_component(options->app_id, KILIXSTATE_FILENAME_CAPACITY) ||
-        !valid_component(options->filename, KILIXSTATE_FILENAME_CAPACITY) ||
         options->max_payload == 0u ||
         options->max_payload > KILIXSTATE_MAX_PAYLOAD ||
         (options->format != KILIXSTATE_FORMAT_CRC32 &&
          options->format != KILIXSTATE_FORMAT_RAW)) return KILIXSTATE_INVALID;
 
-    if (options->base_directory != NULL &&
-        options->base_directory[0] != '\0') {
-        if (options->base_directory[0] != '/')
-            return KILIXSTATE_INVALID;
-        length = snprintf(base, sizeof base, "%s",
-                          options->base_directory);
-    } else if ((xdg_data_home = getenv("XDG_DATA_HOME")) != NULL &&
-               xdg_data_home[0] != '\0') {
-        if (xdg_data_home[0] != '/') return KILIXSTATE_INVALID;
-        length = snprintf(base, sizeof base, "%s", xdg_data_home);
+    explicit_path = options->absolute_path != NULL &&
+                    options->absolute_path[0] != '\0';
+    if (explicit_path) {
+        const char *slash;
+        size_t directory_length;
+
+        if (options->absolute_path[0] != '/') return KILIXSTATE_INVALID;
+        slash = strrchr(options->absolute_path, '/');
+        filename = slash != NULL ? slash + 1 : NULL;
+        if (!valid_filename(filename)) return KILIXSTATE_INVALID;
+        directory_length = (size_t)(slash - options->absolute_path);
+        if (directory_length == 0u) directory_length = 1u;
+        if (directory_length >= sizeof directory) return KILIXSTATE_INVALID;
+        (void)memcpy(directory, options->absolute_path, directory_length);
+        directory[directory_length] = '\0';
+        length = (int)directory_length;
     } else {
-        home = getenv("HOME");
-        if (home == NULL || home[0] != '/') return KILIXSTATE_INVALID;
-        length = snprintf(base, sizeof base, "%s/.local/share", home);
+        if (!valid_component(options->app_id,
+                             KILIXSTATE_FILENAME_CAPACITY) ||
+            !valid_component(options->filename,
+                             KILIXSTATE_FILENAME_CAPACITY))
+            return KILIXSTATE_INVALID;
+        filename = options->filename;
+
+        if (options->base_directory != NULL &&
+            options->base_directory[0] != '\0') {
+            if (options->base_directory[0] != '/')
+                return KILIXSTATE_INVALID;
+            length = snprintf(base, sizeof base, "%s",
+                              options->base_directory);
+        } else if ((xdg_data_home = getenv("XDG_DATA_HOME")) != NULL &&
+                   xdg_data_home[0] != '\0') {
+            if (xdg_data_home[0] != '/') return KILIXSTATE_INVALID;
+            length = snprintf(base, sizeof base, "%s", xdg_data_home);
+        } else {
+            home = getenv("HOME");
+            if (home == NULL || home[0] != '/') return KILIXSTATE_INVALID;
+            length = snprintf(base, sizeof base, "%s/.local/share", home);
+        }
+        if (length < 0 || (size_t)length >= sizeof base)
+            return KILIXSTATE_INVALID;
+        while (length > 1 && base[(size_t)length - 1u] == '/')
+            base[--length] = '\0';
+        length = snprintf(directory, sizeof directory, "%s/%s", base,
+                          options->app_id);
+        if (length < 0 || (size_t)length >= sizeof directory)
+            return KILIXSTATE_INVALID;
     }
-    if (length < 0 || (size_t)length >= sizeof base)
-        return KILIXSTATE_INVALID;
-    while (length > 1 && base[(size_t)length - 1u] == '/')
-        base[--length] = '\0';
-    length = snprintf(directory, sizeof directory, "%s/%s", base,
-                      options->app_id);
-    if (length < 0 || (size_t)length >= sizeof directory)
-        return KILIXSTATE_INVALID;
 
     directory_fd = open_directory_path(directory);
     if (directory_fd < 0) return result_from_errno(errno);
@@ -168,18 +219,21 @@ kilixstate_result kilixstate_store_init(kilixstate_store *store,
         (void)close(directory_fd);
         return result_from_errno(failure);
     }
-    if (!S_ISDIR(status.st_mode) || status.st_uid != geteuid()) {
+    if (!S_ISDIR(status.st_mode) ||
+        (!explicit_path && status.st_uid != geteuid()) ||
+        (explicit_path && (status.st_mode & (S_IWGRP | S_IWOTH)) != 0 &&
+         (status.st_mode & S_ISVTX) == 0)) {
         (void)close(directory_fd);
         return KILIXSTATE_SECURITY;
     }
-    if (fchmod(directory_fd, 0700) != 0) {
+    if (!explicit_path && fchmod(directory_fd, 0700) != 0) {
         const int failure = errno;
         (void)close(directory_fd);
         return result_from_errno(failure);
     }
     (void)memcpy(store->directory_path, directory, (size_t)length + 1u);
     (void)snprintf(store->filename, sizeof store->filename, "%s",
-                   options->filename);
+                   filename);
     store->max_payload = options->max_payload;
     store->directory_fd = directory_fd;
     store->format = (uint8_t)options->format;

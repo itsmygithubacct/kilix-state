@@ -55,6 +55,13 @@ Tests, portable bundles, and embedding hosts can set
 and the override uses the same component-by-component no-symlink traversal;
 relative overrides are rejected.
 
+Legacy games and embedding hosts that already expose a full save-file override
+can instead set `options.absolute_path`. Its parent is opened without following
+symlinks, but existing parent permissions are never changed. Group- or
+world-writable parents must use the sticky bit (as `/tmp` does), the target
+must still be a regular file owned by the caller, and writes retain the same
+private temporary-file and atomic-replace contract.
+
 For an existing byte-for-byte file format, select `KILIXSTATE_FORMAT_RAW`.
 Raw storage retains the secure and atomic filesystem behavior but omits the
 record header and checksum, which makes it useful for compatibility
