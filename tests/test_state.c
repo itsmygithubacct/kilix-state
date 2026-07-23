@@ -1,4 +1,5 @@
 #include "kilix_state.h"
+#include "kilix_state_codec.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -266,6 +267,123 @@ static bool test_absolute_path_compatibility(const char *root)
     return true;
 }
 
+typedef struct migration_result {
+    int32_t score;
+    bool enabled;
+} migration_result;
+
+static bool decode_v1(kilixstate_reader *reader, void *context)
+{
+    migration_result *result = context;
+    return result && kilixstate_read_i32(reader, &result->score) &&
+           kilixstate_read_bool(reader, &result->enabled);
+}
+
+static bool test_codec(void)
+{
+    uint8_t payload[32];
+    uint8_t copied[3] = {0};
+    static const uint8_t source[3] = {7u, 8u, 9u};
+    kilixstate_writer writer;
+    kilixstate_reader reader;
+    uint8_t u8;
+    uint16_t u16;
+    uint32_t u32;
+    uint64_t u64;
+    int32_t i32;
+    bool boolean;
+
+    kilixstate_writer_init(&writer, payload, sizeof payload);
+    CHECK(kilixstate_write_u8(&writer, UINT8_C(0xa5)));
+    CHECK(kilixstate_write_u16(&writer, UINT16_C(0x1234)));
+    CHECK(kilixstate_write_u32(&writer, UINT32_C(0x89abcdef)));
+    CHECK(kilixstate_write_u64(&writer, UINT64_C(0x0123456789abcdef)));
+    CHECK(kilixstate_write_i32(&writer, INT32_C(-1234567)));
+    CHECK(kilixstate_write_bool(&writer, true));
+    CHECK(kilixstate_write_bytes(&writer, source, sizeof source));
+    CHECK(kilixstate_write_zeroes(
+        &writer, kilixstate_writer_remaining(&writer)));
+    CHECK(kilixstate_writer_size(&writer) == sizeof payload);
+    CHECK(kilixstate_writer_result(&writer) == KILIXSTATE_CODEC_OK);
+    CHECK(payload[1] == UINT8_C(0x34) && payload[2] == UINT8_C(0x12));
+
+    kilixstate_reader_init(&reader, payload, sizeof payload);
+    CHECK(kilixstate_read_u8(&reader, &u8) && u8 == UINT8_C(0xa5));
+    CHECK(kilixstate_read_u16(&reader, &u16) && u16 == UINT16_C(0x1234));
+    CHECK(kilixstate_read_u32(&reader, &u32) &&
+          u32 == UINT32_C(0x89abcdef));
+    CHECK(kilixstate_read_u64(&reader, &u64) &&
+          u64 == UINT64_C(0x0123456789abcdef));
+    CHECK(kilixstate_read_i32(&reader, &i32) && i32 == INT32_C(-1234567));
+    CHECK(kilixstate_read_bool(&reader, &boolean) && boolean);
+    CHECK(kilixstate_read_bytes(&reader, copied, sizeof copied));
+    CHECK(memcmp(copied, source, sizeof source) == 0);
+    CHECK(kilixstate_reader_require_zero_tail(&reader));
+    CHECK(kilixstate_reader_remaining(&reader) == 0u);
+
+    kilixstate_writer_init(&writer, payload, 1u);
+    CHECK(!kilixstate_write_u32(&writer, UINT32_C(1)));
+    CHECK(kilixstate_writer_result(&writer) == KILIXSTATE_CODEC_NO_SPACE);
+    kilixstate_reader_init(&reader, payload, 1u);
+    CHECK(!kilixstate_read_u32(&reader, &u32));
+    CHECK(kilixstate_reader_result(&reader) == KILIXSTATE_CODEC_TRUNCATED);
+    payload[0] = UINT8_C(2);
+    kilixstate_reader_init(&reader, payload, 1u);
+    CHECK(!kilixstate_read_bool(&reader, &boolean));
+    CHECK(kilixstate_reader_result(&reader) ==
+          KILIXSTATE_CODEC_NONCANONICAL);
+    return true;
+}
+
+static bool test_migrations(void)
+{
+    uint8_t payload[16];
+    kilixstate_writer writer;
+    migration_result decoded = {0};
+    uint32_t version = 0u;
+    kilixstate_migration migrations[] = {
+        {1u, sizeof payload, true, decode_v1}
+    };
+
+    kilixstate_writer_init(&writer, payload, sizeof payload);
+    CHECK(kilixstate_write_u32(&writer, UINT32_C(1)));
+    CHECK(kilixstate_write_i32(&writer, INT32_C(-17)));
+    CHECK(kilixstate_write_bool(&writer, true));
+    CHECK(kilixstate_write_zeroes(
+        &writer, kilixstate_writer_remaining(&writer)));
+    CHECK(kilixstate_migrate(payload, sizeof payload, migrations, 1u,
+                             &decoded, &version) == KILIXSTATE_CODEC_OK);
+    CHECK(version == 1u && decoded.score == -17 && decoded.enabled);
+
+    payload[15] = UINT8_C(1);
+    CHECK(kilixstate_migrate(payload, sizeof payload, migrations, 1u,
+                             &decoded, NULL) ==
+          KILIXSTATE_CODEC_NONCANONICAL);
+    payload[15] = 0u;
+    payload[0] = UINT8_C(2);
+    CHECK(kilixstate_migrate(payload, sizeof payload, migrations, 1u,
+                             &decoded, NULL) ==
+          KILIXSTATE_CODEC_UNKNOWN_VERSION);
+    payload[0] = UINT8_C(1);
+    CHECK(kilixstate_migrate(payload, sizeof payload - 1u, migrations, 1u,
+                             &decoded, NULL) ==
+          KILIXSTATE_CODEC_SIZE_MISMATCH);
+    migrations[0].payload_size = 0u;
+    migrations[0].require_zero_tail = false;
+    {
+        kilixstate_migration duplicate[] = {
+            migrations[0], migrations[0]
+        };
+        CHECK(kilixstate_migrate(payload, sizeof payload, duplicate, 2u,
+                                 &decoded, NULL) ==
+              KILIXSTATE_CODEC_DUPLICATE_VERSION);
+    }
+    CHECK(strcmp(kilixstate_codec_result_name(
+                     KILIXSTATE_CODEC_UNKNOWN_VERSION),
+                 "unknown version") == 0);
+    return true;
+}
+
 int main(void)
 {
     char root_template[] = "/tmp/kilix-state-test-XXXXXX";
@@ -275,7 +393,8 @@ int main(void)
         !test_crc_record_and_atomic_replace(root) ||
         !test_raw_compatibility() || !test_symlink_defenses(root) ||
         !test_validation() || !test_explicit_base_directory(root) ||
-        !test_absolute_path_compatibility(root) || rmdir(root) != 0 ||
+        !test_absolute_path_compatibility(root) || !test_codec() ||
+        !test_migrations() || rmdir(root) != 0 ||
         setenv("XDG_DATA_HOME", "relative/path", 1) != 0)
         return EXIT_FAILURE;
     {

@@ -2,7 +2,9 @@
 
 `kilix-state` is a dependency-free C11/POSIX library for small game and app
 saves. It turns the repeated “find an XDG path, mkdir, write a struct” code
-into one bounded and crash-safe lifecycle.
+into one bounded and crash-safe lifecycle. Its allocation-free codec layer
+also provides endian-stable payload readers/writers and explicit
+version-migration dispatch without imposing a game schema.
 
 The default record format adds a versioned header and CRC32. Writes use a
 mode-0600 same-directory temporary file, `fsync()`, atomic `renameat()`, and
@@ -44,6 +46,22 @@ if (kilixstate_store_init(&store, &options) == KILIXSTATE_OK) {
     kilixstate_store_close(&store);
 }
 ```
+
+Game-owned save payloads can use `kilix_state_codec.h` instead of repeating
+unchecked byte offsets:
+
+```c
+kilixstate_writer writer;
+kilixstate_writer_init(&writer, payload, sizeof payload);
+kilixstate_write_u32(&writer, SAVE_VERSION);
+kilixstate_write_i32(&writer, player_hp);
+kilixstate_write_zeroes(&writer, kilixstate_writer_remaining(&writer));
+```
+
+Migration tables select a unique leading little-endian version, optionally
+require an exact payload size and canonical zero tail, and call a game-owned
+decoder with the version already consumed. Decoders should populate temporary
+state and publish it only after successful validation.
 
 State lives below `$XDG_DATA_HOME/<app_id>` when `XDG_DATA_HOME` is an
 absolute path, otherwise below `$HOME/.local/share/<app_id>`. Every path
