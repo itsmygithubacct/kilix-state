@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kilix-state-py"
+version = "0.1.0"
+description = "Typed Python bindings for the kilix-state C library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "kilix-state-py contributors"}]
+keywords = [
+  "state",
+  "persistence",
+  "atomic-write",
+  "crc32",
+  "xdg",
+  "games",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/itsmygithubacct/kilix-state-py"
+Repository = "https://github.com/itsmygithubacct/kilix-state-py.git"
+Issues = "https://github.com/itsmygithubacct/kilix-state-py/issues"
+"Native library" = "https://github.com/itsmygithubacct/kilix-state"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kilix_state = ["py.typed"]
