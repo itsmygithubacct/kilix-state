@@ -1,5 +1,5 @@
 PYTHON ?= python3
-KILIX_STATE_DIR ?= ../kilix-state
+KILIX_STATE_DIR ?= ..
 KILIX_STATE_LIBRARY := $(abspath $(KILIX_STATE_DIR)/build/libkilix-state.so)
 PYTHON_SOURCES := $(wildcard src/kilix_state/*.py)
 TEST_SOURCES := $(wildcard tests/*.py)

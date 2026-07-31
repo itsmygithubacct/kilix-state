@@ -1,7 +1,7 @@
-# kilix-state-py
+# kilix-state Python bindings
 
 `kilix-state-py` is a typed, dependency-free Python binding for
-[`kilix-state`](https://github.com/itsmygithubacct/kilix-state), the bounded,
+[`kilix-state`](..), the bounded,
 crash-safe state library shared by Kilix games and apps. It exposes the native
 0.4 record and path-security contract through a small Pythonic `Store` API.
 
@@ -15,14 +15,15 @@ CRC validation, atomic replacement, and durable directory updates.
 - `libkilix-state` 0.4.x built as a shared library
 - A POSIX system supported by the native library
 
-For sibling source checkouts:
+From a source checkout:
 
 ```bash
-cd kilix-state-py
+git clone https://github.com/itsmygithubacct/kilix-state.git
+cd kilix-state/python
 make check
 ```
 
-The loader finds `../kilix-state/build/libkilix-state.so` automatically. An
+The loader finds `../build/libkilix-state.so` automatically. An
 installed or unusual build can be selected explicitly:
 
 ```bash
@@ -32,8 +33,9 @@ python3 your_program.py
 
 Discovery checks, in order: an explicit `KilixStateLibrary(path)`, the
 `KILIX_STATE_LIBRARY` environment override, a package-local `_libs` directory,
-conventional sibling checkouts, the platform library registry, and dynamic
-loader defaults. An explicit or environment path is authoritative.
+this repository's native build, conventional sibling checkouts, the platform
+library registry, and dynamic loader defaults. An explicit or environment path
+is authoritative.
 
 Install the binding without bundling the native library:
 
@@ -158,4 +160,5 @@ validated by the complete required symbol set. Missing symbols raise
 
 ## License
 
-MIT. The external `kilix-state` library is also MIT licensed.
+MIT. The native `kilix-state` library in the parent directory is also MIT
+licensed.

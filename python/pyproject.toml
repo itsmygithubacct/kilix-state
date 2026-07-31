@@ -33,9 +33,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/itsmygithubacct/kilix-state-py"
-Repository = "https://github.com/itsmygithubacct/kilix-state-py.git"
-Issues = "https://github.com/itsmygithubacct/kilix-state-py/issues"
+Homepage = "https://github.com/itsmygithubacct/kilix-state/tree/main/python"
+Repository = "https://github.com/itsmygithubacct/kilix-state.git"
+Issues = "https://github.com/itsmygithubacct/kilix-state/issues"
 "Native library" = "https://github.com/itsmygithubacct/kilix-state"
 
 [tool.setuptools]

@@ -76,6 +76,7 @@ def _auto_candidates() -> list[str]:
     for name in names:
         candidates.extend((
             str(package / "_libs" / name),
+            str(project.parent / "build" / name),
             str(project.parent / "kilix-state" / "build" / name),
             str(project / "kilix-state" / "build" / name),
             str(project.parent / "kilix-game-kit" / "third_party"

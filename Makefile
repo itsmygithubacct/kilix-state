@@ -19,7 +19,7 @@ STATIC_LIB := $(BUILD_DIR)/lib$(PROJECT).a
 SHARED_LIB := $(BUILD_DIR)/lib$(PROJECT).so
 TEST_BIN := $(BUILD_DIR)/test-state
 
-.PHONY: all clean install sanitize test
+.PHONY: all clean install python-check python-wheel sanitize test
 
 all: $(STATIC_LIB) $(SHARED_LIB)
 
@@ -51,6 +51,12 @@ sanitize: | $(BUILD_DIR)
 		src/kilix_state.c src/kilix_state_codec.c tests/test_state.c \
 		-fsanitize=address,undefined -o $(BUILD_DIR)/test-state-sanitize
 	ASAN_OPTIONS=detect_leaks=1 $(BUILD_DIR)/test-state-sanitize
+
+python-check:
+	$(MAKE) -C python check KILIX_STATE_DIR=..
+
+python-wheel:
+	$(MAKE) -C python wheel KILIX_STATE_DIR=..
 
 install: all
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/include $(DESTDIR)$(PREFIX)/lib

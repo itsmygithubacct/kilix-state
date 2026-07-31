@@ -22,6 +22,16 @@ make sanitize
 The build produces static and shared libraries with no dependencies beyond
 the C/POSIX system libraries.
 
+The typed, pure-Python binding is maintained in [`python/`](python). It uses
+the same shared library and keeps persistence semantics in the native code:
+
+```sh
+make python-check
+make python-wheel
+```
+
+The wheel is written below `python/dist/`.
+
 ## Use
 
 ```c
