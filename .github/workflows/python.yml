@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install packaging tools
+        run: python -m pip install --upgrade pip setuptools wheel
       - name: Build and test native and Python libraries
         run: make python-check
       - name: Build wheel
