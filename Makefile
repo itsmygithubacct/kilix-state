@@ -6,6 +6,7 @@ DESTDIR ?=
 CC ?= cc
 AR ?= ar
 INSTALL ?= install
+PYTHON ?= python3
 
 CPPFLAGS += -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE -Iinclude
 WARNINGS := \
@@ -18,8 +19,10 @@ OBJECTS := $(BUILD_DIR)/kilix_state.o $(BUILD_DIR)/kilix_state_codec.o
 STATIC_LIB := $(BUILD_DIR)/lib$(PROJECT).a
 SHARED_LIB := $(BUILD_DIR)/lib$(PROJECT).so
 TEST_BIN := $(BUILD_DIR)/test-state
+BENCH_BIN := $(BUILD_DIR)/bench-state
 
-.PHONY: all clean install python-check python-wheel sanitize test
+.PHONY: all benchmark clean install python-benchmark python-check \
+	python-wheel sanitize test
 
 all: $(STATIC_LIB) $(SHARED_LIB)
 
@@ -42,8 +45,18 @@ $(SHARED_LIB): $(OBJECTS)
 $(TEST_BIN): tests/test_state.c $(STATIC_LIB) | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(STATIC_LIB) $(LDFLAGS) -o $@
 
+$(BENCH_BIN): benchmarks/bench_state.c $(STATIC_LIB) | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(STATIC_LIB) $(LDFLAGS) -o $@
+
 test: $(TEST_BIN)
 	$(TEST_BIN)
+
+benchmark: $(BENCH_BIN)
+	$(BENCH_BIN)
+
+python-benchmark: all
+	PYTHONPATH=python/src KILIX_STATE_LIBRARY=$(abspath $(SHARED_LIB)) \
+		$(PYTHON) benchmarks/bench_python.py
 
 sanitize: | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) -std=c11 -O1 -g3 $(WARNINGS) \

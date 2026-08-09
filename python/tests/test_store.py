@@ -119,6 +119,12 @@ class StoreLifecycleTests(unittest.TestCase):
             self.assertEqual(store.load(), payload)
             self.assertEqual(path.read_bytes(), payload)
 
+    def test_load_retries_records_above_initial_buffer(self) -> None:
+        payload = bytes(range(256)) * 257
+        with self.store(max_payload=len(payload)) as store:
+            store.save(payload)
+            self.assertEqual(store.load(), payload)
+
     def test_absolute_path_supports_hidden_legacy_filename(self) -> None:
         path = self.root / ".legacy-save"
         with ks.Store(

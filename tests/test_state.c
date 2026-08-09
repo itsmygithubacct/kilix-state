@@ -29,7 +29,10 @@ static bool no_temporary_files(const char *directory)
 
     if (stream == NULL) return false;
     while ((entry = readdir(stream)) != NULL) {
-        if (strstr(entry->d_name, ".tmp.") != NULL) {
+        const size_t length = strlen(entry->d_name);
+        if (strncmp(entry->d_name, ".kilixstate.", 12u) == 0 &&
+            length >= 4u &&
+            strcmp(entry->d_name + length - 4u, ".tmp") == 0) {
             clean = false;
             break;
         }
@@ -93,6 +96,25 @@ static bool test_crc_record_and_atomic_replace(const char *root)
     CHECK(kilixstate_load(&store, loaded, sizeof loaded, &loaded_size) ==
           KILIXSTATE_OK);
     CHECK(memcmp(loaded, state, sizeof state) == 0);
+
+    /* Header fields, truncation, and trailing bytes are all canonical. */
+    fd = open(path, O_RDWR | O_CLOEXEC | O_NOFOLLOW);
+    CHECK(fd >= 0);
+    CHECK(pwrite(fd, "BAD!", 4u, 0) == 4);
+    CHECK(close(fd) == 0);
+    CHECK(kilixstate_load(&store, loaded, sizeof loaded, &loaded_size) ==
+          KILIXSTATE_CORRUPT);
+    CHECK(kilixstate_save(&store, state, sizeof state) == KILIXSTATE_OK);
+    fd = open(path, O_WRONLY | O_APPEND | O_CLOEXEC | O_NOFOLLOW);
+    CHECK(fd >= 0);
+    CHECK(write(fd, state, 1u) == 1);
+    CHECK(close(fd) == 0);
+    CHECK(kilixstate_load(&store, loaded, sizeof loaded, &loaded_size) ==
+          KILIXSTATE_CORRUPT);
+    CHECK(kilixstate_save(&store, NULL, 0u) == KILIXSTATE_OK);
+    CHECK(kilixstate_load(&store, NULL, 0u, &loaded_size) == KILIXSTATE_OK);
+    CHECK(loaded_size == 0u);
+    CHECK(kilixstate_save(&store, state, sizeof state) == KILIXSTATE_OK);
     CHECK(kilixstate_remove(&store) == KILIXSTATE_OK);
     CHECK(kilixstate_load(&store, loaded, sizeof loaded, &loaded_size) ==
           KILIXSTATE_NOT_FOUND);
@@ -186,6 +208,7 @@ static bool test_validation(void)
 {
     kilixstate_options options;
     kilixstate_store store;
+    char path[16];
     size_t size = 0u;
 
     kilixstate_options_init(&options);
@@ -202,6 +225,15 @@ static bool test_validation(void)
           KILIXSTATE_NOT_INITIALIZED);
     CHECK(strcmp(kilixstate_result_name(KILIXSTATE_CORRUPT),
                  "corrupt state") == 0);
+
+    (void)memset(&store, 0, sizeof store);
+    (void)snprintf(store.directory_path, sizeof store.directory_path, "/");
+    (void)snprintf(store.filename, sizeof store.filename, "state");
+    store.initialized = true;
+    CHECK(kilixstate_store_path(&store, path, sizeof path) == KILIXSTATE_OK);
+    CHECK(strcmp(path, "/state") == 0);
+    CHECK(kilixstate_store_path(&store, path, 6u) ==
+          KILIXSTATE_BUFFER_TOO_SMALL);
     return true;
 }
 
@@ -261,6 +293,13 @@ static bool test_absolute_path_compatibility(const char *root)
     CHECK(memcmp(loaded, state, sizeof state) == 0);
     kilixstate_store_close(&store);
     CHECK(unlink(path) == 0);
+
+    CHECK(chmod(root, 0777) == 0);
+    CHECK(kilixstate_store_init(&store, &options) == KILIXSTATE_SECURITY);
+    CHECK(chmod(root, 01777) == 0);
+    CHECK(kilixstate_store_init(&store, &options) == KILIXSTATE_OK);
+    kilixstate_store_close(&store);
+    CHECK(chmod(root, 0700) == 0);
 
     options.absolute_path = "relative/save";
     CHECK(kilixstate_store_init(&store, &options) == KILIXSTATE_INVALID);
@@ -332,6 +371,17 @@ static bool test_codec(void)
     CHECK(!kilixstate_read_bool(&reader, &boolean));
     CHECK(kilixstate_reader_result(&reader) ==
           KILIXSTATE_CODEC_NONCANONICAL);
+
+    (void)memset(payload, 0xa5, sizeof payload);
+    kilixstate_writer_init(&writer, payload, 4u);
+    CHECK(!kilixstate_write_u64(&writer, UINT64_C(0x0123456789abcdef)));
+    CHECK(kilixstate_writer_size(&writer) == 0u);
+    CHECK(payload[0] == UINT8_C(0xa5) && payload[3] == UINT8_C(0xa5));
+    u64 = UINT64_C(0xfeedfacecafebeef);
+    kilixstate_reader_init(&reader, payload, 4u);
+    CHECK(!kilixstate_read_u64(&reader, &u64));
+    CHECK(reader.offset == 0u);
+    CHECK(u64 == UINT64_C(0xfeedfacecafebeef));
     return true;
 }
 

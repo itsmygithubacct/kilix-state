@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Avoid redundant copies for immutable Python payloads and extract loaded
+  bytes without materializing a list of Python integers.
+- Load common records with one native call while retaining bounded retries for
+  concurrently replaced or larger records.
+- Clarify that the binding requires the API introduced in native 0.4 and
+  accepts compatible later releases.
+
 ## 0.1.0 - 2026-07-22
 
 - Add a complete typed `ctypes` binding for the kilix-state 0.4 API.

@@ -90,7 +90,7 @@ def _auto_candidates() -> list[str]:
 
 
 class KilixStateLibrary:
-    """A loaded ``kilix-state`` shared library with a declared 0.4 ABI.
+    """A loaded ``kilix-state`` library supporting the required 0.4 API.
 
     ``path`` can be an absolute path or a dynamic-loader name. When omitted,
     discovery checks ``KILIX_STATE_LIBRARY``, a package-local ``_libs``
@@ -147,7 +147,8 @@ class KilixStateLibrary:
         except AttributeError as error:
             raise IncompatibleLibraryError(
                 f"{self.path} does not export required symbol {name}; "
-                "kilix-state 0.4.x is required"
+                "the kilix-state 0.4 API or a compatible later API is "
+                "required"
             ) from error
         function.argtypes = arguments
         function.restype = result

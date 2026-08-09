@@ -56,10 +56,27 @@ bool kilixstate_write_u32(kilixstate_writer *writer, uint32_t value)
 
 bool kilixstate_write_u64(kilixstate_writer *writer, uint64_t value)
 {
-    uint32_t low = (uint32_t)(value & UINT64_C(0xffffffff));
-    uint32_t high = (uint32_t)(value >> 32);
-    return kilixstate_write_u32(writer, low) &&
-           kilixstate_write_u32(writer, high);
+    size_t offset;
+
+    if (!writer_reserve(writer, 8u)) return false;
+    offset = writer->offset;
+    writer->bytes[offset] = (uint8_t)(value & UINT64_C(0xff));
+    writer->bytes[offset + 1u] =
+        (uint8_t)((value >> 8) & UINT64_C(0xff));
+    writer->bytes[offset + 2u] =
+        (uint8_t)((value >> 16) & UINT64_C(0xff));
+    writer->bytes[offset + 3u] =
+        (uint8_t)((value >> 24) & UINT64_C(0xff));
+    writer->bytes[offset + 4u] =
+        (uint8_t)((value >> 32) & UINT64_C(0xff));
+    writer->bytes[offset + 5u] =
+        (uint8_t)((value >> 40) & UINT64_C(0xff));
+    writer->bytes[offset + 6u] =
+        (uint8_t)((value >> 48) & UINT64_C(0xff));
+    writer->bytes[offset + 7u] =
+        (uint8_t)((value >> 56) & UINT64_C(0xff));
+    writer->offset += 8u;
+    return true;
 }
 
 bool kilixstate_write_i32(kilixstate_writer *writer, int32_t value)
@@ -182,16 +199,24 @@ bool kilixstate_read_u32(kilixstate_reader *reader, uint32_t *value)
 
 bool kilixstate_read_u64(kilixstate_reader *reader, uint64_t *value)
 {
-    uint32_t low;
-    uint32_t high;
+    size_t offset;
+
     if (!value) {
         if (reader && reader->result == KILIXSTATE_CODEC_OK)
             reader->result = KILIXSTATE_CODEC_INVALID_ARGUMENT;
         return false;
     }
-    if (!kilixstate_read_u32(reader, &low) ||
-        !kilixstate_read_u32(reader, &high)) return false;
-    *value = (uint64_t)low | (uint64_t)high << 32;
+    if (!reader_reserve(reader, 8u)) return false;
+    offset = reader->offset;
+    *value = (uint64_t)reader->bytes[offset] |
+             (uint64_t)reader->bytes[offset + 1u] << 8 |
+             (uint64_t)reader->bytes[offset + 2u] << 16 |
+             (uint64_t)reader->bytes[offset + 3u] << 24 |
+             (uint64_t)reader->bytes[offset + 4u] << 32 |
+             (uint64_t)reader->bytes[offset + 5u] << 40 |
+             (uint64_t)reader->bytes[offset + 6u] << 48 |
+             (uint64_t)reader->bytes[offset + 7u] << 56;
+    reader->offset += 8u;
     return true;
 }
 

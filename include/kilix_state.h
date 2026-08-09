@@ -48,7 +48,11 @@ typedef struct kilixstate_options {
     kilixstate_format format;
 } kilixstate_options;
 
-/* Public for stack/static allocation; treat fields as private. */
+/*
+ * Public for stack/static allocation; treat fields as private. A live store
+ * owns its directory descriptor: close it before reinitializing and do not
+ * copy it.
+ */
 typedef struct kilixstate_store {
     char directory_path[KILIXSTATE_PATH_CAPACITY];
     char filename[KILIXSTATE_FILENAME_CAPACITY];

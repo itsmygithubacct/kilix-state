@@ -3,7 +3,8 @@
 `kilix-state-py` is a typed, dependency-free Python binding for
 [`kilix-state`](..), the bounded,
 crash-safe state library shared by Kilix games and apps. It exposes the native
-0.4 record and path-security contract through a small Pythonic `Store` API.
+API introduced in 0.4, including its record and path-security contract,
+through a small Pythonic `Store` API and accepts compatible later native APIs.
 
 The wheel contains only Python. The native library remains the source of truth
 for XDG path resolution, no-follow traversal, ownership checks, record bounds,
@@ -12,7 +13,8 @@ CRC validation, atomic replacement, and durable directory updates.
 ## Requirements
 
 - Python 3.10 or newer
-- `libkilix-state` 0.4.x built as a shared library
+- `libkilix-state` providing the 0.4 API or a compatible later API, built as a
+  shared library
 - A POSIX system supported by the native library
 
 From a source checkout:
@@ -145,18 +147,19 @@ same-instance thread serialization.
 
 ## Versioning
 
-The binding and native ABI are versioned independently:
+The binding and its minimum native API requirement are versioned independently:
 
 ```python
 import kilix_state
 
 kilix_state.__version__       # binding version, currently 0.1.0
-kilix_state.KILIX_STATE_ABI   # required native ABI line, currently (0, 4)
+kilix_state.KILIX_STATE_ABI   # minimum required native API, currently (0, 4)
 ```
 
-The native 0.4 API has no runtime version-query symbol, so compatibility is
-validated by the complete required symbol set. Missing symbols raise
-`IncompatibleLibraryError` when the library loads.
+The minimum native 0.4 API has no runtime version-query symbol, so
+compatibility is validated by the complete required symbol set. Missing
+symbols raise `IncompatibleLibraryError` when the library loads; compatible
+later native releases are accepted.
 
 ## License
 

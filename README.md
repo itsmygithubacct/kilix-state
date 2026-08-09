@@ -8,19 +8,24 @@ version-migration dispatch without imposing a game schema.
 
 The default record format adds a versioned header and CRC32. Writes use a
 mode-0600 same-directory temporary file, `fsync()`, atomic `renameat()`, and
-a directory `fsync()`. Reads use a stable directory descriptor plus
-`O_NOFOLLOW`, accept only regular files owned by the current user, enforce a
-configured maximum before reading, and reject truncated or corrupt records.
+a directory `fsync()`. Newly created path components are also synchronized
+with their parent before initialization succeeds. Reads use a stable directory
+descriptor plus `O_NOFOLLOW`, accept only regular files owned by the current
+user, enforce a configured maximum before reading, and reject truncated or
+corrupt records.
 
 ## Build and test
 
 ```sh
 make test
 make sanitize
+make benchmark         # manual native measurements
+make python-benchmark  # manual binding measurements
 ```
 
 The build produces static and shared libraries with no dependencies beyond
-the C/POSIX system libraries.
+the C/POSIX system libraries. Benchmark results are informational rather than
+pass/fail tests and should be compared under the same build and host workload.
 
 The typed, pure-Python binding is maintained in [`python/`](python). It uses
 the same shared library and keeps persistence semantics in the native code:
@@ -57,6 +62,10 @@ if (kilixstate_store_init(&store, &options) == KILIXSTATE_OK) {
 }
 ```
 
+A successfully initialized `kilixstate_store` owns a directory descriptor.
+Treat a live store as non-copyable and call `kilixstate_store_close()` before
+reusing its storage.
+
 Game-owned save payloads can use `kilix_state_codec.h` instead of repeating
 unchecked byte offsets:
 
@@ -71,7 +80,8 @@ kilixstate_write_zeroes(&writer, kilixstate_writer_remaining(&writer));
 Migration tables select a unique leading little-endian version, optionally
 require an exact payload size and canonical zero tail, and call a game-owned
 decoder with the version already consumed. Decoders should populate temporary
-state and publish it only after successful validation.
+state and publish it only after successful validation. Scalar codec operations
+consume the complete value or leave their offset unchanged.
 
 State lives below `$XDG_DATA_HOME/<app_id>` when `XDG_DATA_HOME` is an
 absolute path, otherwise below `$HOME/.local/share/<app_id>`. Every path

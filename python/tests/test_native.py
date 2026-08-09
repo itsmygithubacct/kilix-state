@@ -4,6 +4,7 @@ import ctypes.util
 import os
 import unittest
 from unittest.mock import patch
+import zlib
 
 import kilix_state as ks
 
@@ -42,6 +43,13 @@ class NativeLibraryTests(unittest.TestCase):
     def test_native_crc_and_result_names_are_public(self) -> None:
         self.assertEqual(ks.crc32(b"123456789"), 0xCBF43926)
         self.assertEqual(ks.crc32(b""), 0)
+        for payload in (
+            bytes(range(256)),
+            bytearray(bytes(range(251)) * 257),
+            memoryview(bytes(range(127)) * 1024),
+        ):
+            with self.subTest(size=len(payload)):
+                self.assertEqual(ks.crc32(payload), zlib.crc32(payload))
         self.assertEqual(ks.result_name(ks.Result.CORRUPT), "corrupt state")
         self.assertEqual(ks.result_name(999), "unknown state result")
 

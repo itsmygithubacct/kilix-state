@@ -177,6 +177,10 @@ def _path_bytes(
 def _buffer_bytes(
     value: Any, *, maximum: int | None = None, operation: str = "save"
 ) -> bytes:
+    if isinstance(value, bytes):
+        if maximum is not None and len(value) > maximum:
+            raise StateTooLargeError(Result.TOO_LARGE, operation)
+        return value
     try:
         view = memoryview(value)
     except TypeError as error:
@@ -195,10 +199,10 @@ def _buffer_bytes(
         view.release()
 
 
-def _native_bytes(data: bytes):
+def _native_bytes(data: bytes) -> ctypes.c_char_p | None:
     if not data:
         return None
-    return (ctypes.c_uint8 * len(data)).from_buffer_copy(data)
+    return ctypes.c_char_p(data)
 
 
 def result_name(
@@ -349,27 +353,30 @@ class Store:
 
         with self._lock:
             self._require_open("load")
+            capacity = min(self._max_payload, DEFAULT_MAX_PAYLOAD)
             for _attempt in range(MAX_LOAD_ATTEMPTS):
-                required = ctypes.c_size_t()
-                result = int(self._library.raw.kilixstate_load(
-                    ctypes.byref(self._store), None, 0,
-                    ctypes.byref(required)))
-                if result == Result.OK:
-                    return b""
-                if result != Result.BUFFER_TOO_SMALL:
-                    _raise_result(result, "load")
-                if required.value > self._max_payload:
-                    _raise_result(Result.TOO_LARGE, "load")
-
-                buffer = (ctypes.c_uint8 * required.value)()
+                buffer = (ctypes.c_uint8 * capacity)()
                 actual = ctypes.c_size_t()
                 result = int(self._library.raw.kilixstate_load(
-                    ctypes.byref(self._store), buffer, required.value,
+                    ctypes.byref(self._store), buffer, capacity,
                     ctypes.byref(actual)))
                 if result == Result.OK:
-                    return bytes(buffer[:actual.value])
+                    if actual.value > capacity:
+                        raise IncompatibleLibraryError(
+                            "kilixstate_load reported a payload larger than "
+                            "the supplied buffer"
+                        )
+                    return ctypes.string_at(buffer, actual.value)
                 if result != Result.BUFFER_TOO_SMALL:
                     _raise_result(result, "load")
+                if actual.value > self._max_payload:
+                    _raise_result(Result.TOO_LARGE, "load")
+                if actual.value == 0:
+                    raise IncompatibleLibraryError(
+                        "kilixstate_load returned BUFFER_TOO_SMALL without "
+                        "a required payload size"
+                    )
+                capacity = actual.value
             raise StateIOError(
                 Result.IO_ERROR,
                 "load",

@@ -43,6 +43,8 @@ typedef struct kilixstate_reader {
     kilixstate_codec_result result;
 } kilixstate_reader;
 
+/* Scalar operations consume either the complete value or no bytes. */
+
 void kilixstate_writer_init(kilixstate_writer *writer, void *bytes,
                             size_t capacity);
 bool kilixstate_write_u8(kilixstate_writer *writer, uint8_t value);
