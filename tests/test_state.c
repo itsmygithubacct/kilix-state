@@ -41,6 +41,53 @@ static bool no_temporary_files(const char *directory)
     return clean;
 }
 
+/* Bit-at-a-time reflected CRC-32; the table-free reference oracle. */
+static uint32_t reference_crc32(const unsigned char *bytes,
+                                size_t byte_count)
+{
+    uint32_t crc = UINT32_MAX;
+
+    for (size_t index = 0u; index < byte_count; ++index) {
+        crc ^= (uint32_t)bytes[index];
+        for (unsigned int bit = 0u; bit < 8u; ++bit)
+            crc = (crc >> 1) ^
+                  (UINT32_C(0xedb88320) & (0u - (crc & 1u)));
+    }
+    return crc ^ UINT32_MAX;
+}
+
+static bool test_crc_reference_parity(void)
+{
+    enum { crc_buffer_size = 64u * 1024u + 9u };
+    static unsigned char buffer[crc_buffer_size];
+    uint64_t seed = UINT64_C(0x9e3779b97f4a7c15);
+
+    for (size_t index = 0u; index < sizeof buffer; ++index) {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        buffer[index] = (unsigned char)(seed & 0xffu);
+    }
+
+    CHECK(kilixstate_crc32("123456789", 9u) == UINT32_C(0xcbf43926));
+    CHECK(kilixstate_crc32("", 0u) == 0u);
+    CHECK(kilixstate_crc32(NULL, 0u) == 0u);
+    CHECK(kilixstate_crc32(NULL, 1u) == 0u);
+
+    /* Every length through several blocks exercises head/tail splits. */
+    for (size_t length = 0u; length <= 64u; ++length)
+        CHECK(kilixstate_crc32(buffer, length) ==
+              reference_crc32(buffer, length));
+
+    /* Misaligned starts and ragged tails over the full buffer. */
+    for (size_t offset = 0u; offset < 16u; ++offset) {
+        const size_t length = sizeof buffer - offset - (offset % 3u);
+        CHECK(kilixstate_crc32(buffer + offset, length) ==
+              reference_crc32(buffer + offset, length));
+    }
+    return true;
+}
+
 static bool test_crc_record_and_atomic_replace(const char *root)
 {
     static const unsigned char state[] = {1u, 2u, 3u, 4u, 5u};
@@ -440,6 +487,7 @@ int main(void)
     char *root = mkdtemp(root_template);
 
     if (root == NULL || setenv("XDG_DATA_HOME", root, 1) != 0 ||
+        !test_crc_reference_parity() ||
         !test_crc_record_and_atomic_replace(root) ||
         !test_raw_compatibility() || !test_symlink_defenses(root) ||
         !test_validation() || !test_explicit_base_directory(root) ||
