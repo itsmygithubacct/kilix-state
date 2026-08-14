@@ -249,6 +249,24 @@ class PathSecurityTests(unittest.TestCase):
                 ks.Store("bad-xdg", "state")
 
 
+class ResultMessageTests(unittest.TestCase):
+    def test_error_details_match_native_result_names(self) -> None:
+        for result in ks.Result:
+            with self.subTest(result=result):
+                error = ks.StateOperationError(result, "probe")
+                self.assertEqual(error.detail, ks.result_name(result))
+                self.assertEqual(
+                    str(error), f"probe failed: {error.detail}")
+                self.assertIs(error.result, result)
+                self.assertEqual(error.operation, "probe")
+
+    def test_explicit_detail_overrides_the_native_name(self) -> None:
+        error = ks.StateOperationError(
+            ks.Result.IO_ERROR, "probe", "custom detail")
+        self.assertEqual(error.detail, "custom detail")
+        self.assertEqual(str(error), "probe failed: custom detail")
+
+
 class ValidationTests(unittest.TestCase):
     def test_invalid_components_limits_and_format(self) -> None:
         with tempfile.TemporaryDirectory() as root:
