@@ -61,8 +61,9 @@ python-benchmark: all
 sanitize: | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) -std=c11 -O1 -g3 $(WARNINGS) \
 		-fno-omit-frame-pointer -fsanitize=address,undefined \
+		-fno-sanitize-recover=undefined \
 		src/kilix_state.c src/kilix_state_codec.c tests/test_state.c \
-		-fsanitize=address,undefined -o $(BUILD_DIR)/test-state-sanitize
+		-o $(BUILD_DIR)/test-state-sanitize
 	ASAN_OPTIONS=detect_leaks=1 $(BUILD_DIR)/test-state-sanitize
 
 python-check:
