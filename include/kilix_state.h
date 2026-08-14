@@ -15,6 +15,11 @@ extern "C" {
 #define KILIXSTATE_VERSION_MINOR 5
 #define KILIXSTATE_VERSION_PATCH 0
 
+/* Runtime-queryable ABI generation: (MAJOR << 16) | MINOR. */
+#define KILIXSTATE_ABI_VERSION \
+    (((uint32_t)KILIXSTATE_VERSION_MAJOR << 16) | \
+     (uint32_t)KILIXSTATE_VERSION_MINOR)
+
 #define KILIXSTATE_DEFAULT_MAX_PAYLOAD (64u * 1024u)
 #define KILIXSTATE_MAX_PAYLOAD (16u * 1024u * 1024u)
 #define KILIXSTATE_PATH_CAPACITY 4096u
@@ -94,6 +99,15 @@ kilixstate_result kilixstate_store_path(const kilixstate_store *store,
 
 uint32_t kilixstate_crc32(const void *bytes, size_t byte_count);
 const char *kilixstate_result_name(kilixstate_result result);
+
+/*
+ * Runtime ABI checks for out-of-tree bindings: the built library's
+ * KILIXSTATE_ABI_VERSION and the exact byte size of kilixstate_store.
+ * Callers that allocate the store themselves must refuse to run when
+ * either value disagrees with the layout they were compiled against.
+ */
+uint32_t kilixstate_abi_version(void);
+size_t kilixstate_store_sizeof(void);
 
 #ifdef __cplusplus
 }

@@ -619,6 +619,16 @@ kilixstate_result kilixstate_store_path(const kilixstate_store *store,
     return KILIXSTATE_OK;
 }
 
+uint32_t kilixstate_abi_version(void)
+{
+    return KILIXSTATE_ABI_VERSION;
+}
+
+size_t kilixstate_store_sizeof(void)
+{
+    return sizeof(kilixstate_store);
+}
+
 const char *kilixstate_result_name(kilixstate_result result)
 {
     switch (result) {

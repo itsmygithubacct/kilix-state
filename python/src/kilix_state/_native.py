@@ -14,6 +14,10 @@ from typing import Iterable
 PATH_CAPACITY = 4096
 FILENAME_CAPACITY = 256
 
+# Oldest native ABI whose exports and struct layout this binding supports.
+SUPPORTED_ABI_MAJOR = 0
+MINIMUM_ABI_MINOR = 5
+
 
 class KilixStateError(Exception):
     """Base exception for binding and native state failures."""
@@ -47,6 +51,9 @@ class _Store(ctypes.Structure):
         ("format", ctypes.c_uint8),
         ("initialized", ctypes.c_bool),
     )
+
+
+_STORE_SIZE = ctypes.sizeof(_Store)
 
 
 def _library_names() -> tuple[str, ...]:
@@ -90,14 +97,18 @@ def _auto_candidates() -> list[str]:
 
 
 class KilixStateLibrary:
-    """A loaded ``kilix-state`` library supporting the required 0.4 API.
+    """A loaded ``kilix-state`` library supporting the required 0.5 API.
 
     ``path`` can be an absolute path or a dynamic-loader name. When omitted,
     discovery checks ``KILIX_STATE_LIBRARY``, a package-local ``_libs``
     directory, conventional sibling checkouts, and finally the system loader.
+    Every load is verified against the native library's reported ABI version
+    and ``kilixstate_store`` size; a mismatch refuses to bind because the
+    binding allocates the store struct itself and a layout skew would corrupt
+    memory instead of failing cleanly.
     """
 
-    abi_version = (0, 4)
+    abi_version = (SUPPORTED_ABI_MAJOR, MINIMUM_ABI_MINOR)
 
     def __init__(self, path: str | os.PathLike[str] | None = None) -> None:
         explicit_value = os.fspath(path) if path is not None else None
@@ -137,7 +148,10 @@ class KilixStateLibrary:
 
         self.path = loaded_from
         self.raw = library
+        self.native_abi = (0, 0)
+        self.store_size = 0
         self._declare_functions()
+        self._verify_abi()
 
     def _declare(
         self, name: str, arguments: list[object], result: object
@@ -147,7 +161,8 @@ class KilixStateLibrary:
         except AttributeError as error:
             raise IncompatibleLibraryError(
                 f"{self.path} does not export required symbol {name}; "
-                "the kilix-state 0.4 API or a compatible later API is "
+                f"the kilix-state {SUPPORTED_ABI_MAJOR}."
+                f"{MINIMUM_ABI_MINOR} API or a compatible later API is "
                 "required"
             ) from error
         function.argtypes = arguments
@@ -178,6 +193,28 @@ class KilixStateLibrary:
         self._declare(
             "kilixstate_crc32", [ctypes.c_void_p, size], ctypes.c_uint32)
         self._declare("kilixstate_result_name", [result], ctypes.c_char_p)
+        self._declare("kilixstate_abi_version", [], ctypes.c_uint32)
+        self._declare("kilixstate_store_sizeof", [], size)
+
+    def _verify_abi(self) -> None:
+        version = int(self.raw.kilixstate_abi_version())
+        major = version >> 16
+        minor = version & 0xFFFF
+        self.native_abi = (major, minor)
+        if major != SUPPORTED_ABI_MAJOR or minor < MINIMUM_ABI_MINOR:
+            raise IncompatibleLibraryError(
+                f"{self.path} reports kilix-state ABI {major}.{minor}; "
+                f"this binding requires {SUPPORTED_ABI_MAJOR}."
+                f"{MINIMUM_ABI_MINOR} or a compatible later minor"
+            )
+        self.store_size = int(self.raw.kilixstate_store_sizeof())
+        if self.store_size != _STORE_SIZE:
+            raise IncompatibleLibraryError(
+                f"{self.path} uses a {self.store_size}-byte "
+                f"kilixstate_store but this binding was written for "
+                f"{_STORE_SIZE} bytes; refusing to bind a mismatched "
+                "store layout"
+            )
 
     def __repr__(self) -> str:
         return (

@@ -3,7 +3,7 @@
 `kilix-state-py` is a typed, dependency-free Python binding for
 [`kilix-state`](..), the bounded,
 crash-safe state library shared by Kilix games and apps. It exposes the native
-API introduced in 0.4, including its record and path-security contract,
+API introduced in 0.5, including its record and path-security contract,
 through a small Pythonic `Store` API and accepts compatible later native APIs.
 
 The wheel contains only Python. The native library remains the source of truth
@@ -13,7 +13,7 @@ CRC validation, atomic replacement, and durable directory updates.
 ## Requirements
 
 - Python 3.10 or newer
-- `libkilix-state` providing the 0.4 API or a compatible later API, built as a
+- `libkilix-state` providing the 0.5 API or a compatible later API, built as a
   shared library
 - A POSIX system supported by the native library
 
@@ -153,13 +153,16 @@ The binding and its minimum native API requirement are versioned independently:
 import kilix_state
 
 kilix_state.__version__       # binding version, currently 0.1.0
-kilix_state.KILIX_STATE_ABI   # minimum required native API, currently (0, 4)
+kilix_state.KILIX_STATE_ABI   # minimum required native API, currently (0, 5)
 ```
 
-The minimum native 0.4 API has no runtime version-query symbol, so
-compatibility is validated by the complete required symbol set. Missing
-symbols raise `IncompatibleLibraryError` when the library loads; compatible
-later native releases are accepted.
+Compatibility is enforced when the library loads: the complete required
+symbol set must be present, `kilixstate_abi_version()` must report a
+supported major and minimum minor, and `kilixstate_store_sizeof()` must
+match the store layout this binding allocates. Any mismatch raises
+`IncompatibleLibraryError` instead of binding, because a store layout skew
+would corrupt memory rather than fail cleanly. Compatible later native
+releases are accepted.
 
 ## License
 

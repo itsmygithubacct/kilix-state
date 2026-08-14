@@ -272,6 +272,10 @@ static bool test_validation(void)
           KILIXSTATE_NOT_INITIALIZED);
     CHECK(strcmp(kilixstate_result_name(KILIXSTATE_CORRUPT),
                  "corrupt state") == 0);
+    CHECK(kilixstate_store_sizeof() == sizeof(kilixstate_store));
+    CHECK(kilixstate_abi_version() ==
+          (((uint32_t)KILIXSTATE_VERSION_MAJOR << 16) |
+           (uint32_t)KILIXSTATE_VERSION_MINOR));
 
     (void)memset(&store, 0, sizeof store);
     (void)snprintf(store.directory_path, sizeof store.directory_path, "/");

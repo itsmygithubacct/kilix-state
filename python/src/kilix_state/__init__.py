@@ -28,7 +28,7 @@ from .store import (
 
 
 __version__ = "0.1.0"
-KILIX_STATE_ABI = (0, 4)
+KILIX_STATE_ABI = (0, 5)
 
 
 __all__ = [

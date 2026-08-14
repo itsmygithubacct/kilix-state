@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Require the native 0.5 API and refuse to bind a library whose reported
+  ABI version or `kilixstate_store` size disagrees with the binding's
+  layout, instead of risking memory corruption on skewed checkouts.
 - Avoid redundant copies for immutable Python payloads and extract loaded
   bytes without materializing a list of Python integers.
 - Load common records with one native call while retaining bounded retries for
