@@ -48,17 +48,21 @@ class Result(IntEnum):
     NOT_INITIALIZED = 8
 
 
-_RESULT_MESSAGES = {
-    Result.OK: "ok",
-    Result.NOT_FOUND: "not found",
-    Result.INVALID: "invalid argument",
-    Result.TOO_LARGE: "state too large",
-    Result.BUFFER_TOO_SMALL: "buffer too small",
-    Result.CORRUPT: "corrupt state",
-    Result.SECURITY: "unsafe state path",
-    Result.IO_ERROR: "I/O error",
-    Result.NOT_INITIALIZED: "store not initialized",
-}
+def _default_detail(result: Result | int) -> str:
+    """Native diagnostic name, or the enum name if no library loads.
+
+    Exceptions such as ``StateTooLargeError`` can be raised before any
+    native call, so a missing or incompatible library must degrade the
+    message rather than mask the original failure.
+    """
+
+    try:
+        return result_name(result)
+    except KilixStateError:
+        name = getattr(result, "name", None)
+        if name is None:
+            return f"result {int(result)}"
+        return name.replace("_", " ").lower()
 
 
 class StateOperationError(KilixStateError):
@@ -69,7 +73,7 @@ class StateOperationError(KilixStateError):
     ) -> None:
         self.result = result
         self.operation = operation
-        self.detail = detail or _RESULT_MESSAGES[result]
+        self.detail = detail or _default_detail(result)
         super().__init__(f"{operation} failed: {self.detail}")
 
 

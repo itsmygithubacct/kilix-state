@@ -266,6 +266,15 @@ class ResultMessageTests(unittest.TestCase):
         self.assertEqual(error.detail, "custom detail")
         self.assertEqual(str(error), "probe failed: custom detail")
 
+    def test_detail_degrades_without_a_loadable_library(self) -> None:
+        with patch(
+            "kilix_state.store.result_name",
+            side_effect=ks.LibraryNotFoundError("unavailable"),
+        ):
+            error = ks.StateOperationError(ks.Result.TOO_LARGE, "save")
+        self.assertEqual(error.detail, "too large")
+        self.assertEqual(str(error), "save failed: too large")
+
 
 class ValidationTests(unittest.TestCase):
     def test_invalid_components_limits_and_format(self) -> None:
