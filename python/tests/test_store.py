@@ -30,6 +30,30 @@ class StoreLifecycleTests(unittest.TestCase):
             **kwargs,
         )
 
+    def test_selected_library_errors_do_not_discover_defaults(self) -> None:
+        library = ks.KilixStateLibrary(os.environ["KILIX_STATE_LIBRARY"])
+        with patch("kilix_state.store.default_library",
+                   side_effect=AssertionError("unexpected discovery")), patch.object(
+                       library.raw, "kilixstate_result_name",
+                       return_value=b"selected diagnostic") as diagnostic:
+            with self.assertRaises(ks.InvalidStateError) as caught:
+                self.store(library=library, absolute_path="relative")
+            self.assertEqual(caught.exception.detail, "selected diagnostic")
+            with self.store(library=library) as store:
+                for operation in (store.load, store.remove):
+                    with self.assertRaises(ks.StateNotFoundError) as caught:
+                        operation()
+                    self.assertEqual(caught.exception.detail, "selected diagnostic")
+                for name, operation in (
+                    ("kilixstate_save", lambda: store.save(b"test")),
+                    ("kilixstate_store_path", lambda: store.path),
+                ):
+                    with patch.object(library.raw, name, return_value=int(ks.Result.IO_ERROR)):
+                        with self.assertRaises(ks.StateIOError) as caught:
+                            operation()
+                        self.assertEqual(caught.exception.detail, "selected diagnostic")
+            self.assertEqual(diagnostic.call_count, 5)
+
     def test_crc_record_lifecycle_and_atomic_replace(self) -> None:
         store = self.store(max_payload=32)
         self.addCleanup(store.close)
@@ -245,15 +269,22 @@ class PathSecurityTests(unittest.TestCase):
             os.environ,
             {"HOME": str(home), "XDG_DATA_HOME": "relative/path"},
         ):
+            with ks.Store("relative-xdg", "state") as store:
+                self.assertEqual(
+                    store.path,
+                    home / ".local" / "share" / "relative-xdg" / "state",
+                )
+        with patch.dict(os.environ, {"HOME": "relative", "XDG_DATA_HOME": "relative"}):
             with self.assertRaises(ks.InvalidStateError):
-                ks.Store("bad-xdg", "state")
+                ks.Store("invalid-home", "state")
 
 
 class ResultMessageTests(unittest.TestCase):
     def test_error_details_match_native_result_names(self) -> None:
+        library = ks.KilixStateLibrary(os.environ["KILIX_STATE_LIBRARY"])
         for result in ks.Result:
             with self.subTest(result=result):
-                error = ks.StateOperationError(result, "probe")
+                error = ks.StateOperationError(result, "probe", library=library)
                 self.assertEqual(error.detail, ks.result_name(result))
                 self.assertEqual(
                     str(error), f"probe failed: {error.detail}")
@@ -268,10 +299,11 @@ class ResultMessageTests(unittest.TestCase):
 
     def test_detail_degrades_without_a_loadable_library(self) -> None:
         with patch(
-            "kilix_state.store.result_name",
-            side_effect=ks.LibraryNotFoundError("unavailable"),
-        ):
+            "kilix_state.store.default_library",
+            side_effect=AssertionError("unexpected discovery"),
+        ) as discovery:
             error = ks.StateOperationError(ks.Result.TOO_LARGE, "save")
+            discovery.assert_not_called()
         self.assertEqual(error.detail, "too large")
         self.assertEqual(str(error), "save failed: too large")
 

@@ -436,6 +436,15 @@ static bool test_codec(void)
     return true;
 }
 
+/* Model a callback that overlooks a safe reader failure. */
+static bool decode_ignoring_status(kilixstate_reader *reader, void *context)
+{
+    bool value = false;
+    (void)context;
+    (void)kilixstate_read_bool(reader, &value);
+    return true;
+}
+
 static bool test_migrations(void)
 {
     uint8_t payload[16];
@@ -479,6 +488,18 @@ static bool test_migrations(void)
                                  &decoded, NULL) ==
               KILIXSTATE_CODEC_DUPLICATE_VERSION);
     }
+    migrations[0].decode = decode_ignoring_status;
+    for (unsigned int tail = 0u; tail < 2u; ++tail) {
+        migrations[0].require_zero_tail = tail != 0u;
+        version = UINT32_C(99);
+        CHECK(kilixstate_migrate(payload, 4u, migrations, 1u,
+                                NULL, &version) == KILIXSTATE_CODEC_TRUNCATED);
+        CHECK(version == UINT32_C(99));
+        payload[4] = 2u;
+        CHECK(kilixstate_migrate(payload, 5u, migrations, 1u,
+                                NULL, &version) == KILIXSTATE_CODEC_NONCANONICAL);
+        CHECK(version == UINT32_C(99));
+    }
     CHECK(strcmp(kilixstate_codec_result_name(
                      KILIXSTATE_CODEC_UNKNOWN_VERSION),
                  "unknown version") == 0);
@@ -487,7 +508,10 @@ static bool test_migrations(void)
 
 int main(void)
 {
-    char root_template[] = "/tmp/kilix-state-test-XXXXXX";
+    char root_template[KILIXSTATE_PATH_CAPACITY];
+    const char *temporary = getenv("TMPDIR");
+    (void)snprintf(root_template, sizeof root_template,
+                   "%s/kilix-state-test-XXXXXX", temporary ? temporary : "/tmp");
     char *root = mkdtemp(root_template);
 
     if (root == NULL || setenv("XDG_DATA_HOME", root, 1) != 0 ||
@@ -496,7 +520,7 @@ int main(void)
         !test_raw_compatibility() || !test_symlink_defenses(root) ||
         !test_validation() || !test_explicit_base_directory(root) ||
         !test_absolute_path_compatibility(root) || !test_codec() ||
-        !test_migrations() || rmdir(root) != 0 ||
+        !test_migrations() || setenv("HOME", root, 1) != 0 ||
         setenv("XDG_DATA_HOME", "relative/path", 1) != 0)
         return EXIT_FAILURE;
     {
@@ -505,7 +529,19 @@ int main(void)
         kilixstate_options_init(&options);
         options.app_id = "game";
         options.filename = "state";
-        if (kilixstate_store_init(&store, &options) != KILIXSTATE_INVALID)
+        char expected[KILIXSTATE_PATH_CAPACITY];
+        if (kilixstate_store_init(&store, &options) != KILIXSTATE_OK)
+            return EXIT_FAILURE;
+        (void)snprintf(expected, sizeof expected, "%s/.local/share/game", root);
+        if (strcmp(store.directory_path, expected) != 0) return EXIT_FAILURE;
+        kilixstate_store_close(&store);
+        if (rmdir(expected) != 0) return EXIT_FAILURE;
+        (void)snprintf(expected, sizeof expected, "%s/.local/share", root);
+        if (rmdir(expected) != 0) return EXIT_FAILURE;
+        (void)snprintf(expected, sizeof expected, "%s/.local", root);
+        if (rmdir(expected) != 0 || rmdir(root) != 0) return EXIT_FAILURE;
+        if (setenv("HOME", "relative", 1) != 0 ||
+            kilixstate_store_init(&store, &options) != KILIXSTATE_INVALID)
             return EXIT_FAILURE;
     }
     (void)puts("ok: kilix-state");

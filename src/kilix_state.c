@@ -619,7 +619,6 @@ static int open_directory_path(const char *path)
     while (*cursor != '\0') {
         const char *end;
         size_t length;
-        bool synchronize_entry = false;
         int next_fd;
 
         while (*cursor == '/') ++cursor;
@@ -638,11 +637,8 @@ static int open_directory_path(const char *path)
         next_fd = openat(directory_fd, component,
                          O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
         if (next_fd < 0 && errno == ENOENT) {
-            if (mkdirat(directory_fd, component, 0700) == 0)
-                synchronize_entry = true;
-            else if (errno == EEXIST)
-                synchronize_entry = true;
-            else {
+            if (mkdirat(directory_fd, component, 0700) != 0 &&
+                errno != EEXIST) {
                 const int failure = errno;
                 (void)close(directory_fd);
                 errno = failure;
@@ -657,8 +653,9 @@ static int open_directory_path(const char *path)
             errno = failure;
             return -1;
         }
-        if (synchronize_entry &&
-            (fsync(next_fd) != 0 || fsync(directory_fd) != 0)) {
+        /* Existing entries may come from an interrupted or concurrent
+         * initializer that has not synchronized their parent yet. */
+        if (fsync(next_fd) != 0 || fsync(directory_fd) != 0) {
             const int failure = errno;
             (void)close(next_fd);
             (void)close(directory_fd);
@@ -744,8 +741,7 @@ kilixstate_result kilixstate_store_init(kilixstate_store *store,
             length = snprintf(base, sizeof base, "%s",
                               options->base_directory);
         } else if ((xdg_data_home = getenv("XDG_DATA_HOME")) != NULL &&
-                   xdg_data_home[0] != '\0') {
-            if (xdg_data_home[0] != '/') return KILIXSTATE_INVALID;
+                   xdg_data_home[0] == '/') {
             length = snprintf(base, sizeof base, "%s", xdg_data_home);
         } else {
             home = getenv("HOME");

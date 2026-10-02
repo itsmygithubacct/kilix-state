@@ -19,6 +19,7 @@ OBJECTS := $(BUILD_DIR)/kilix_state.o $(BUILD_DIR)/kilix_state_codec.o
 STATIC_LIB := $(BUILD_DIR)/lib$(PROJECT).a
 SHARED_LIB := $(BUILD_DIR)/lib$(PROJECT).so
 TEST_BIN := $(BUILD_DIR)/test-state
+SYNC_TEST_BIN := $(BUILD_DIR)/test-directory-sync
 BENCH_BIN := $(BUILD_DIR)/bench-state
 
 .PHONY: all benchmark clean install python-benchmark python-check \
@@ -48,8 +49,12 @@ $(TEST_BIN): tests/test_state.c $(STATIC_LIB) | $(BUILD_DIR)
 $(BENCH_BIN): benchmarks/bench_state.c $(STATIC_LIB) | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(STATIC_LIB) $(LDFLAGS) -o $@
 
-test: $(TEST_BIN)
+$(SYNC_TEST_BIN): tests/test_directory_sync.c $(STATIC_LIB) | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(STATIC_LIB) $(LDFLAGS) -Wl,--wrap=fsync -o $@
+
+test: $(TEST_BIN) $(SYNC_TEST_BIN)
 	$(TEST_BIN)
+	$(SYNC_TEST_BIN)
 
 benchmark: $(BENCH_BIN)
 	$(BENCH_BIN)

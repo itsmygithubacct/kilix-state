@@ -48,32 +48,32 @@ class Result(IntEnum):
     NOT_INITIALIZED = 8
 
 
-def _default_detail(result: Result | int) -> str:
-    """Native diagnostic name, or the enum name if no library loads.
+def _default_detail(
+    result: Result | int, library: KilixStateLibrary | None = None
+) -> str:
+    """Use the selected library, with a discovery-free enum fallback."""
 
-    Exceptions such as ``StateTooLargeError`` can be raised before any
-    native call, so a missing or incompatible library must degrade the
-    message rather than mask the original failure.
-    """
-
-    try:
-        return result_name(result)
-    except KilixStateError:
-        name = getattr(result, "name", None)
-        if name is None:
-            return f"result {int(result)}"
-        return name.replace("_", " ").lower()
+    if library is not None:
+        try:
+            return result_name(result, library=library)
+        except KilixStateError:
+            pass
+    name = getattr(result, "name", None)
+    if name is None:
+        return f"result {int(result)}"
+    return name.replace("_", " ").lower()
 
 
 class StateOperationError(KilixStateError):
     """Base exception for a failed native store operation."""
 
     def __init__(
-        self, result: Result, operation: str, detail: str | None = None
+        self, result: Result, operation: str, detail: str | None = None,
+        *, library: KilixStateLibrary | None = None,
     ) -> None:
         self.result = result
         self.operation = operation
-        self.detail = detail or _default_detail(result)
+        self.detail = detail or _default_detail(result, library)
         super().__init__(f"{operation} failed: {self.detail}")
 
 
@@ -121,7 +121,9 @@ _ERROR_TYPES: dict[Result, type[StateOperationError]] = {
 }
 
 
-def _raise_result(value: int, operation: str) -> NoReturn:
+def _raise_result(
+    value: int, operation: str, library: KilixStateLibrary
+) -> NoReturn:
     try:
         result = Result(value)
     except ValueError as error:
@@ -129,7 +131,7 @@ def _raise_result(value: int, operation: str) -> NoReturn:
             f"{operation} returned unknown kilix-state result {value}"
         ) from error
     exception = _ERROR_TYPES.get(result, StateOperationError)
-    raise exception(result, operation)
+    raise exception(result, operation, library=library)
 
 
 def _library(value: KilixStateLibrary | None) -> KilixStateLibrary:
@@ -296,7 +298,7 @@ class Store:
         result = int(native.raw.kilixstate_store_init(
             ctypes.byref(self._store), ctypes.byref(options)))
         if result != Result.OK:
-            _raise_result(result, "initialize store")
+            _raise_result(result, "initialize store", self._library)
         self._closed = False
 
     @property
@@ -327,7 +329,7 @@ class Store:
         result = int(self._library.raw.kilixstate_store_path(
             ctypes.byref(self._store), buffer, capacity))
         if result != Result.OK:
-            _raise_result(result, "resolve path")
+            _raise_result(result, "resolve path", self._library)
         return Path(os.fsdecode(buffer.value))
 
     @property
@@ -350,7 +352,7 @@ class Store:
             result = int(self._library.raw.kilixstate_save(
                 ctypes.byref(self._store), buffer, len(data)))
             if result != Result.OK:
-                _raise_result(result, "save")
+                _raise_result(result, "save", self._library)
 
     def load(self) -> bytes:
         """Load and verify the record, returning its payload bytes."""
@@ -372,9 +374,9 @@ class Store:
                         )
                     return ctypes.string_at(buffer, actual.value)
                 if result != Result.BUFFER_TOO_SMALL:
-                    _raise_result(result, "load")
+                    _raise_result(result, "load", self._library)
                 if actual.value > self._max_payload:
-                    _raise_result(Result.TOO_LARGE, "load")
+                    _raise_result(Result.TOO_LARGE, "load", self._library)
                 if actual.value == 0:
                     raise IncompatibleLibraryError(
                         "kilixstate_load returned BUFFER_TOO_SMALL without "
@@ -410,7 +412,7 @@ class Store:
                 return True
             if result == Result.NOT_FOUND and missing_ok:
                 return False
-            _raise_result(result, "remove")
+            _raise_result(result, "remove", self._library)
 
     def close(self) -> None:
         """Close the stable native directory descriptor; idempotent."""

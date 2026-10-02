@@ -346,6 +346,8 @@ kilixstate_codec_result kilixstate_migrate(
         return result == KILIXSTATE_CODEC_OK ?
                KILIXSTATE_CODEC_DECODE_FAILED : result;
     }
+    if (kilixstate_reader_result(&reader) != KILIXSTATE_CODEC_OK)
+        return kilixstate_reader_result(&reader);
     if (selected->require_zero_tail &&
         !kilixstate_reader_require_zero_tail(&reader))
         return kilixstate_reader_result(&reader);
