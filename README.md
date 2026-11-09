@@ -6,6 +6,14 @@ into one bounded and crash-safe lifecycle. Its allocation-free codec layer
 also provides endian-stable payload readers/writers and explicit
 version-migration dispatch without imposing a game schema.
 
+Ships in Plebian-OS 0.2.3 as a submodule of
+[Kilix](https://github.com/itsmygithubacct/kilix#readme)
+(`third_party/kilix-state`). Kilix builds the shared library into its private
+build directory, and desktop providers save their state through the Python
+binding that `kilix_sdk.state` exposes.
+
+## What it does
+
 The default record format adds a versioned header and CRC32. Writes use a
 mode-0600 same-directory temporary file, `fsync()`, atomic `renameat()`, and
 a directory `fsync()`. Newly created path components are also synchronized
@@ -14,7 +22,19 @@ descriptor plus `O_NOFOLLOW`, accept only regular files owned by the current
 user, enforce a configured maximum before reading, and reject truncated or
 corrupt records.
 
+- One store per app ID and filename, below `$XDG_DATA_HOME/<app_id>` (or
+  `~/.local/share/<app_id>`), with an explicit `max_payload` of at most 16 MiB.
+- Crash-safe saves: private temporary file, `fsync()`, atomic rename,
+  directory `fsync()`.
+- No symlinks followed on any path component; only regular files owned by
+  the caller are read.
+- An allocation-free codec (`kilix_state_codec.h`) for endian-stable payloads
+  and version-migration dispatch.
+- A typed, pure-Python binding in [`python/`](python) over the same shared
+  library.
+
 ## Build and test
+
 
 ```sh
 make test
@@ -37,73 +57,50 @@ make python-wheel
 
 The wheel is written below `python/dist/`.
 
-## Use
 
-```c
-#include "kilix_state.h"
+The smallest C use is `kilixstate_options_init`, set `app_id`, `filename`
+and `max_payload`, then `kilixstate_store_init`, `kilixstate_load` /
+`kilixstate_save` and `kilixstate_store_close`; the full example is in
+[docs/c-api.md](docs/c-api.md).
 
-kilixstate_options options;
-kilixstate_store store;
-GameSave save;
-size_t size;
+## Usage
 
-kilixstate_options_init(&options);
-options.app_id = "my-game";
-options.filename = "save.state";
-options.max_payload = sizeof save;
+| Function | What it does |
+|---|---|
+| `kilixstate_options_init(&options)` | Defaults; then set `app_id`, `filename`, `max_payload`, optionally `base_directory` or `absolute_path` |
+| `kilixstate_store_init(&store, &options)` | Resolve and open the state directory; the store owns a directory descriptor |
+| `kilixstate_load(&store, buf, size, &got)` | Read and validate one record into `buf` |
+| `kilixstate_save(&store, payload, size)` | Atomically replace the record |
+| `kilixstate_remove(&store)` | Remove the record and persist the directory update |
+| `kilixstate_store_path(&store, ...)` | The resolved file path |
+| `kilixstate_store_close(&store)` | Release the store; idempotent |
+| `kilixstate_writer_init`, `kilixstate_write_*`, `kilixstate_reader_init`, `kilixstate_read_*` | Bounded little-endian payload codec in `kilix_state_codec.h` |
+| `kilixstate_migrate(payload, size, migrations, count, context, &version)` | Dispatch on the leading little-endian version to a game-owned decoder |
 
-if (kilixstate_store_init(&store, &options) == KILIXSTATE_OK) {
-    if (kilixstate_load(&store, &save, sizeof save, &size) != KILIXSTATE_OK)
-        save = default_save();
+| Make target | What it does |
+|---|---|
+| `make` / `make test` / `make sanitize` | Static and shared libraries; tests; tests under sanitizers |
+| `make benchmark`, `make python-benchmark` | Informational native and binding measurements |
+| `make python-check`, `make python-wheel` | Binding tests; a wheel below `python/dist/` |
+| `make install PREFIX=...` | Install headers and libraries |
 
-    /* ... mutate save ... */
-    (void)kilixstate_save(&store, &save, sizeof save);
-    kilixstate_store_close(&store);
-}
+## How it works
+
+```
+ app ──kilixstate_save()──> header (version, size) + payload + CRC32
+                             │
+        open dir (O_NOFOLLOW, per component) ── 0700 app directory
+                             │
+        write .tmp (0600) ── fsync ── renameat ── fsync(dir)
+ app <─kilixstate_load()── check owner, regular file, max size, header, CRC
 ```
 
-A successfully initialized `kilixstate_store` owns a directory descriptor.
-Treat a live store as non-copyable and call `kilixstate_store_close()` before
-reusing its storage.
-
-Game-owned save payloads can use `kilix_state_codec.h` instead of repeating
-unchecked byte offsets:
-
-```c
-kilixstate_writer writer;
-kilixstate_writer_init(&writer, payload, sizeof payload);
-kilixstate_write_u32(&writer, SAVE_VERSION);
-kilixstate_write_i32(&writer, player_hp);
-kilixstate_write_zeroes(&writer, kilixstate_writer_remaining(&writer));
-```
-
-Migration tables select a unique leading little-endian version, optionally
-require an exact payload size and canonical zero tail, and call a game-owned
-decoder with the version already consumed. Decoders should populate temporary
-state and publish it only after successful validation. Scalar codec operations
-consume the complete value or leave their offset unchanged.
-
-State lives below `$XDG_DATA_HOME/<app_id>` when `XDG_DATA_HOME` is an
-absolute path, otherwise below `$HOME/.local/share/<app_id>`. Every path
-component is opened without following symlinks; the app directory is private
-mode 0700. App IDs and filenames are single conservative path components.
-
-Tests, portable bundles, and embedding hosts can set
-`options.base_directory` to an absolute root. The app ID is still appended,
-and the override uses the same component-by-component no-symlink traversal;
-relative overrides are rejected.
-
-Legacy games and embedding hosts that already expose a full save-file override
-can instead set `options.absolute_path`. Its parent is opened without following
-symlinks, but existing parent permissions are never changed. Group- or
-world-writable parents must use the sticky bit (as `/tmp` does), the target
-must still be a regular file owned by the caller, and writes retain the same
-private temporary-file and atomic-replace contract.
-
-For an existing byte-for-byte file format, select `KILIXSTATE_FORMAT_RAW`.
-Raw storage retains the secure and atomic filesystem behavior but omits the
-record header and checksum, which makes it useful for compatibility
-migrations. New state should use the default CRC32 format.
+The default record wraps the payload in a versioned header and a CRC32, so a
+torn or corrupted file is rejected rather than half-read. The store keeps a
+directory descriptor opened without following symlinks and does every
+operation relative to it. `KILIXSTATE_FORMAT_RAW` keeps the same filesystem
+discipline for an existing byte-for-byte format. Details, including the codec
+and migration tables: [docs/c-api.md](docs/c-api.md).
 
 ## Contract
 
@@ -117,6 +114,34 @@ migrations. New state should use the default CRC32 format.
 - Structured payloads should contain their own schema version and avoid raw
   pointers, padding-dependent comparisons, or host-endian portability
   assumptions.
+
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/c-api.md](docs/c-api.md) | The C store lifecycle, codec, migrations, state paths, overrides and the raw format |
+| [python/README.md](python/README.md) | The Python binding: requirements, library discovery, `Store` API |
+| [python/CHANGELOG.md](python/CHANGELOG.md) | Binding changes |
+
+## Related repositories
+
+- [kilix](https://github.com/itsmygithubacct/kilix#readme): pins this library
+  and exposes the binding to desktop providers as `kilix_sdk.state`.
+- [kilix-95](https://github.com/itsmygithubacct/kilix-95#readme): a desktop
+  provider that keeps its state through that binding.
+
+## Part of Plebian-OS
+
+kilix-state is one of the repositories behind
+[Plebian-OS](https://github.com/itsmygithubacct/plebian-os#readme), a Debian
+install whose desktop is [Kilix](https://github.com/itsmygithubacct/kilix#readme)
+running the [Kilix 95](https://github.com/itsmygithubacct/kilix-95#readme)
+desktop through [Pleb](https://github.com/itsmygithubacct/pleb#readme).
+It ships inside Kilix as the `third_party/kilix-state` submodule, which builds
+the library that desktop and game state is saved through. The map of every
+repository and how it ships is on the
+[components page](https://github.com/itsmygithubacct/plebian-os/blob/main/docs/components.md).
 
 ## License
 
