@@ -87,7 +87,7 @@ and `max_payload`, then `kilixstate_store_init`, `kilixstate_load` /
 ## How it works
 
 ```
- app ──kilixstate_save()──> header (version, size) + payload + CRC32
+ app ──kilixstate_save()──> header (magic, version, size, CRC32) + payload
                              │
         open dir (O_NOFOLLOW, per component) ── 0700 app directory
                              │
@@ -130,6 +130,8 @@ and migration tables: [docs/c-api.md](docs/c-api.md).
   and exposes the binding to desktop providers as `kilix_sdk.state`.
 - [kilix-95](https://github.com/itsmygithubacct/kilix-95#readme): a desktop
   provider that keeps its state through that binding.
+- [kilix-game-sdk](https://github.com/itsmygithubacct/kilix-game-sdk#readme):
+  carries its own pinned copy as a submodule, compiled into the games.
 
 ## Part of Plebian-OS
 
@@ -139,8 +141,9 @@ install whose desktop is [Kilix](https://github.com/itsmygithubacct/kilix#readme
 running the [Kilix 95](https://github.com/itsmygithubacct/kilix-95#readme)
 desktop through [Pleb](https://github.com/itsmygithubacct/pleb#readme).
 It ships inside Kilix as the `third_party/kilix-state` submodule, which builds
-the library that desktop and game state is saved through. The map of every
-repository and how it ships is on the
+the library that desktop providers save their state through; games compile
+their own copy through kilix-game-sdk. The map of every repository and how it
+ships is on the
 [components page](https://github.com/itsmygithubacct/plebian-os/blob/main/docs/components.md).
 
 ## License
